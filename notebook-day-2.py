@@ -805,49 +805,6 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-
-
-    scenario_selector = mo.ui.dropdown(
-        options={
-            "Free Fall": "free_fall",
-            "Vertical Thrust": "vertical_thrust",
-            "Tilted Thrust": "tilted_thrust",
-            "Offset X=1.0": "offset_x",
-        },
-        label="Choose a scenario",
-        value="Free Fall"
-    )
-    # Display the selector
-    scenario_selector
-    return (scenario_selector,)
-
-
-@app.cell(hide_code=True)
-def _(mo, np, scenario_selector, simulate_booster_landing):
-    def run_simulation():
-            selected = scenario_selector.value
-            if selected == "free_fall":
-                initial_state = [0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-            elif selected == "vertical_thrust":
-                initial_state = [0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0]
-            elif selected == "tilted_thrust":
-                initial_state = [0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, np.pi / 8]
-            elif selected == "offset_x":
-                initial_state = [1.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-            # Run simulation
-            simulation_path, plot_path = simulate_booster_landing(initial_state, fps=15)
-            # Show result
-            return mo.hstack([
-                mo.video(src=simulation_path, controls=False, autoplay=True, loop=True, width="100%"),
-                mo.image(src=plot_path, width="100%")
-            ])
-
-    run_simulation()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
     mo.md(r"""# Linearized Dynamics""")
     return
 
@@ -1892,8 +1849,6 @@ def _(mo):
 
 @app.cell
 def _(np, plt, sci):
-    # Final version adapted to the notebook model
-
     def manually_tuned_controller_adapted():
         # Initial conditions
         theta0 = np.pi / 4  # 45 degrees
@@ -1901,7 +1856,7 @@ def _(np, plt, sci):
         x0 = 0.0
         x_dot0 = 0.0
     
-        # Tuned gains based on system behavior in the notebook context
+
         k3 = 0.2
         k4 = 0.6
         K = np.array([0, 0, k3, k4])
@@ -1910,7 +1865,7 @@ def _(np, plt, sci):
         t_span = (0, 20)
         t_eval = np.linspace(t_span[0], t_span[1], 1000)
 
-        # Simplified linear rotational model: θ'' = -k3 * θ - k4 * θ'
+
         def dynamics(t, state):
             x, x_dot, theta, theta_dot = state
             delta_state = np.array([x, x_dot, theta, theta_dot])
@@ -1952,6 +1907,59 @@ def _(np, plt, sci):
 
     manually_tuned_controller_adapted()
 
+    return
+
+
+app._unparsable_cell(
+    r"""
+    ## 🧩 Validation
+
+    Test the two control strategies (pole placement and optimal control) on the \"true\" (nonlinear) model and check that they achieve their goal. Otherwise, go back to the drawing board and tweak the design parameters until they do!
+    """,
+    name="_"
+)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+
+
+    scenario_selector = mo.ui.dropdown(
+        options={
+            "Free Fall": "free_fall",
+            "Vertical Thrust": "vertical_thrust",
+            "Tilted Thrust": "tilted_thrust",
+            "Offset X=1.0": "offset_x",
+        },
+        label="Choose a scenario",
+        value="Free Fall"
+    )
+    # Display the selector
+    scenario_selector
+    return (scenario_selector,)
+
+
+@app.cell(hide_code=True)
+def _(mo, np, scenario_selector, simulate_booster_landing):
+    def run_simulation():
+            selected = scenario_selector.value
+            if selected == "free_fall":
+                initial_state = [0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            elif selected == "vertical_thrust":
+                initial_state = [0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            elif selected == "tilted_thrust":
+                initial_state = [0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, np.pi / 8]
+            elif selected == "offset_x":
+                initial_state = [1.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            # Run simulation
+            simulation_path, plot_path = simulate_booster_landing(initial_state, fps=15)
+            # Show result
+            return mo.hstack([
+                mo.video(src=simulation_path, controls=False, autoplay=True, loop=True, width="100%"),
+                mo.image(src=plot_path, width="100%")
+            ])
+
+    run_simulation()
     return
 
 
