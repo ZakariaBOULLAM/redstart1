@@ -1606,12 +1606,19 @@ def _(mo):
     return
 
 
-app._unparsable_cell(
-    r"""
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
     When the control angle $\phi(t) = 0$, the linearized dynamics become:
 
-    $$\ddot{\Delta x} = -g \Delta \theta$$
-    $$\ddot{\Delta \theta} = 0$$
+    $$ 
+    \ddot{\Delta x} = -g \Delta \theta
+    $$
+
+    $$
+    \ddot{\Delta \theta} = 0
+    $$
 
     ### Analytical Solution
     With initial conditions:
@@ -1631,24 +1638,9 @@ app._unparsable_cell(
     - $\dot{x}(t) = -g \cdot \theta(0) \cdot t$
     - $x(t) = -\frac{1}{2} g \cdot \theta(0) \cdot t^2$
 
-    This means:
-    1. The rocket maintains its initial tilt angle of 45 degrees
-    2. The rocket experiences constant horizontal acceleration
-    3. The rocket's horizontal position follows a parabolic trajectory
-
-    Physical Interpretation
-
-    This behavior clearly demonstrates why active control is necessary for rocket stabilization:
-
-        Constant Tilt: Without control input, the rocket maintains its initial tilt angle
-        Horizontal Drift: The tilted rocket experiences a horizontal component of gravity, causing it to accelerate sideways
-        Parabolic Path: The horizontal position follows a parabolic curve ($x(t) = -\frac{1}{2}g\theta_0t^2$)
-        Unstable System: The system is inherently unstable without active control - a tilted rocket will continue to drift horizontally
-
-    The simulation confirms our analytical understanding that in the absence of control, even a small initial tilt will cause the rocket to deviate from its vertical path, highlighting the necessity of active stabilization systems in real rocket designs.
-    """,
-    column=None, disabled=False, hide_code=True, name="_"
-)
+    """
+    )
+    return
 
 
 @app.cell(hide_code=True)
@@ -1919,7 +1911,7 @@ def _(mo):
     Through experimentation, we observed that selecting faster poles yielded a significantly better transient response. In particular, the pole configuration:
 
     $$
-    \texttt{target\_poles} = [-2, -2.5, -3, -3.5]
+    \texttt{target\_poles} = [-1.1, -1.2, -1.7, -1.8]
     $$
 
     led to marked improvements. We used the `place_poles procided by scipy method to compute the gain matrix $K_{pp}$ that positions the poles accordingly.
@@ -1936,55 +1928,34 @@ def _(mo):
     return
 
 
-@app.cell
-def _(np):
-    def controller_tuned_with_pole_assignment_task():
-        from scipy.signal import place_poles
-    
-        # System matrices
-        A = np.array([
-            [0, 1, 0, 0],
-            [0, 0, -1, 0],
-            [0, 0, 0, 1],
-            [0, 0, 0, 0]
-        ])
-    
-        B = np.array([[0], [-1], [0], [-3]])
-    
-        # Desired poles
-        desired_poles = [-0.5, -0.6, -0.7, -0.8]
-    
-        # Pole placement
-        placed = place_poles(A, B, desired_poles)
-        K_pp = placed.gain_matrix
-    
-        print("K_pp =", K_pp)
-
-    controller_tuned_with_pole_assignment_task()
-    return
-
-
-@app.cell
+@app.cell(hide_code=True)
 def _(A_lat, B_lat, np):
 
     from scipy.signal import place_poles
 
+    # Define the desired locations for the system poles
     desired_poles = [-1.1, -1.2, -1.7, -1.8]
 
+    # Use pole placement technique to compute gain matrix
     place_obj = place_poles(A_lat, B_lat, desired_poles)
     K_pp = place_obj.gain_matrix
 
-    print("Pole placement gain matrix K_pp:")
+    # Output the resulting controller gains
+    print("State-feedback gains (K_pp) obtained through pole placement:")
     print(K_pp)
 
+    # Form the closed-loop system and analyze its modes
     A_cl = A_lat - B_lat @ K_pp
     eigvals = np.linalg.eigvals(A_cl)
-    print("Closed-loop eigenvalues:", eigvals)
+
+    # Display the eigenvalues to verify placement
+    print("Eigenvalues of the resulting closed-loop dynamics:")
+    print(eigvals)
 
     return A_cl, K_pp
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(A_cl, K_pp, np, plt):
 
     from scipy.signal import StateSpace, lsim
@@ -2149,6 +2120,141 @@ def _(np, plt):
 
     simulate_lqr_response()
 
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ## 🧩 Validation
+
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(J, M, g, l, np, plt, redstart_solve):
+    def visualize():
+        from scipy.signal import place_poles
+        from scipy.linalg import solve_continuous_are
+    
+    
+    
+        # === Reduced Linear Model ===
+        A_lat = np.array([
+            [0, 1, 0, 0],
+            [0, 0, -g, 0],
+            [0, 0, 0, 1],
+            [0, 0, 0, 0]
+        ])
+        B_lat = np.array([
+            [0],
+            [-g],
+            [0],
+            [-l * M * g / J]
+        ])
+    
+        # === Pole Placement Controller ===
+        desired_poles = [-1.1, -1.2, -1.7, -1.8]
+        place_obj = place_poles(A_lat, B_lat, desired_poles)
+        K_pp = place_obj.gain_matrix
+    
+        # === LQR Controller ===
+        A_lqr = np.array([
+            [0, 1, 0, 0],
+            [0, 0, -9.81, 0],
+            [0, 0, 0, 1],
+            [0, 0, 14.7, 0]
+        ])
+        B_lqr = np.array([[0], [0], [0], [1]])
+        Q = np.diag([0, 0, 50, 10])
+        R = np.array([[1]])
+        P = solve_continuous_are(A_lqr, B_lqr, Q, R)
+        K_lqr = np.linalg.inv(R) @ B_lqr.T @ P
+    
+        # === Nonlinear Simulation Wrapper ===
+        def simulate_nonlinear_response(K, label, redstart_solve, nonlinear=True):
+            t0, tf = 0.0, 20.0
+            t_eval = np.linspace(t0, tf, 1000)
+            y0 = [0.0, 0.0, 10.0, 0.0, np.pi/3, 0.0, 0.0, 0.0]
+    
+            def f_phi_nonlinear(t, y):
+                x, dx, y_pos, dy, theta, dtheta, _, _ = y
+                state = np.array([x, dx, theta, dtheta])
+                delta_phi = -K @ state
+                delta_phi = np.clip(delta_phi, -np.pi/2, np.pi/2)
+    
+                # Constant thrust
+                f = M * g
+                return np.array([f, delta_phi.item()])
+    
+            # Run simulation
+            sol = redstart_solve([t0, tf], y0, f_phi_nonlinear)
+            t_vals = t_eval
+            states = sol(t_vals)
+    
+            theta_vals = states[4, :]
+            phi_vals = np.array([-K @ states[[0,1,4,5], i] for i in range(states.shape[1])]).flatten()
+    
+            # Plot results
+            plt.figure(figsize=(10, 4))
+            plt.subplot(1, 2, 1)
+            plt.plot(t_vals, theta_vals, label=r'$\theta(t)$')
+            plt.axhline(np.pi/2, color='red', linestyle='--')
+            plt.axhline(-np.pi/2, color='red', linestyle='--')
+            plt.title(f'{label}: Pitch Angle')
+            plt.xlabel('Time (s)')
+            plt.ylabel('Angle θ (rad)')
+            plt.grid(True)
+            plt.legend()
+    
+            plt.subplot(1, 2, 2)
+            plt.plot(t_vals, phi_vals, label=r'$\phi(t)$', color='orange')
+            plt.axhline(np.pi/2, color='red', linestyle='--')
+            plt.axhline(-np.pi/2, color='red', linestyle='--')
+            plt.title(f'{label}: Control Input')
+            plt.xlabel('Time (s)')
+            plt.ylabel('Δφ (rad)')
+            plt.grid(True)
+            plt.legend()
+    
+            plt.tight_layout()
+            plt.show()
+    
+            # Constraint checks
+            theta_ok = np.all(np.abs(theta_vals) < np.pi/2)
+            phi_ok = np.all(np.abs(phi_vals) < np.pi/2)
+    
+            print(f"{label} – Pitch angle constraint met: {theta_ok}")
+            print(f"{label} – Control input constraint met: {phi_ok}")
+    
+    
+        # === Run Both Validations ===
+        simulate_nonlinear_response(K_pp, "Pole Placement", redstart_solve)
+        simulate_nonlinear_response(K_lqr, "LQR", redstart_solve)
+    visualize()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    The pole placement controller **fails** on the nonlinear model.
+
+    ### Key issues:
+
+    * The pitch angle $\theta(t)$ increases without limit.
+    * The control input $\phi(t)$ also grows uncontrollably.
+    * Both go far beyond the allowed range ($|\theta|, |\phi| < \pi/2$).
+
+    ### Conclusion:
+
+    This controller does **not** stabilize the nonlinear system. The design must be corrected. Only if we had enough time
+    """
+    )
     return
 
 
