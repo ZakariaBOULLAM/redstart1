@@ -1565,7 +1565,7 @@ def _(J, M, g, l, matrix_rank, np):
 
     rank_C_lat = matrix_rank(C_lat)
     print("Controllability matrix rank:", rank_C_lat)
-    return
+    return A_lat, B_lat
 
 
 @app.cell(hide_code=True)
@@ -1606,118 +1606,107 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(
-        r"""
-    Given that the control angle $\phi(t) = 0$, the control input vector becomes:
+app._unparsable_cell(
+    r"""
+    When the control angle $\phi(t) = 0$, the linearized dynamics become:
 
-    $$
-    U(t) = 0
-    $$
+    $$\ddot{\Delta x} = -g \Delta \theta$$
+    $$\ddot{\Delta \theta} = 0$$
 
-    This leads to a simplified **homogeneous system**:
+    ### Analytical Solution
+    With initial conditions:
+    - $x(0) = 0$
+    - $\dot{x}(0) = 0$
+    - $\theta(0) = \frac{45\pi}{180} \approx 0.7854$ rad
+    - $\dot{\theta}(0) = 0$
 
-    $$
-    \dot{X} = AX
-    $$
+    We can derive:
 
-    ---
+    For angle $\theta(t)$:
+    - $\ddot{\theta} = 0 \implies \dot{\theta}(t) = \dot{\theta}(0) = 0$
+    - $\theta(t) = \theta(0) = 0.7854$ rad (constant)
 
-    ### Vertical Motion Analysis
+    For position $x(t)$:
+    - $\ddot{x}(t) = -g \cdot \theta(0) = -0.7854g$ (constant acceleration)
+    - $\dot{x}(t) = -g \cdot \theta(0) \cdot t$
+    - $x(t) = -\frac{1}{2} g \cdot \theta(0) \cdot t^2$
 
-    We focus on the equation governing vertical dynamics:
+    This means:
+    1. The rocket maintains its initial tilt angle of 45 degrees
+    2. The rocket experiences constant horizontal acceleration
+    3. The rocket's horizontal position follows a parabolic trajectory
 
-    $$
-    \ddot{y} = \frac{f \cos(\theta + \phi)}{M} - g
-    $$
+    Physical Interpretation
 
-    With $\phi = 0$, this reduces to:
+    This behavior clearly demonstrates why active control is necessary for rocket stabilization:
 
-    $$
-    \ddot{y} = \frac{f \cos(\theta)}{M} - g
-    $$
+        Constant Tilt: Without control input, the rocket maintains its initial tilt angle
+        Horizontal Drift: The tilted rocket experiences a horizontal component of gravity, causing it to accelerate sideways
+        Parabolic Path: The horizontal position follows a parabolic curve ($x(t) = -\frac{1}{2}g\theta_0t^2$)
+        Unstable System: The system is inherently unstable without active control - a tilted rocket will continue to drift horizontally
 
-    Assuming the thrust exactly balances weight at equilibrium, i.e., $f = Mg$, the equation simplifies further:
-
-    $$
-    \ddot{y} = g \cos(\theta) - g
-    $$
-
-    ---
-
-    ### Small-Angle Approximation
-
-    For small angular deviations $\theta$, we use the second-order Taylor approximation:
-
-    $$
-    \cos(\theta) \approx 1 - \frac{1}{2} \theta^2
-    $$
-
-    Substituting into the equation:
-
-    $$
-    \ddot{y} \approx g \left(1 - \frac{1}{2} \theta^2\right) - g = -\frac{g}{2} \theta^2
-    $$
-
-    This reveals that **even after approximation, the vertical acceleration remains nonlinear** in $\theta$, due to the quadratic term.
-
-    ---
-
-    ### Linearization Assumption
-
-    To preserve a fully linear model, we neglect the nonlinear component $\theta^2$, leading to:
-
-    $$
-    \ddot{y} \approx 0
-    $$
-
-    This implies the system experiences **free fall**, governed purely by gravity:
-
-    $$
-    \ddot{y} = -g \quad \Rightarrow \quad y(t) = y(0) + \dot{y}(0)t - \frac{1}{2}gt^2
-    $$
-
-    """
-    )
-    return
+    The simulation confirms our analytical understanding that in the absence of control, even a small initial tilt will cause the rocket to deviate from its vertical path, highlighting the necessity of active stabilization systems in real rocket designs.
+    """,
+    column=None, disabled=False, hide_code=True, name="_"
+)
 
 
 @app.cell(hide_code=True)
-def _(g, np, plt):
-    def linear_model_in_free_fall_task():
-        # Initial tilt angle (45 degrees)
-        theta0 = np.pi / 4  
-    
-        # Time array from 0 to 2 seconds
-        t = np.linspace(0, 5, 200)
-    
-        # Vertical motion: free fall under gravity
-        y = -0.5 * g * t**2  
-    
-        # Constant tilt angle
-        theta = np.full_like(t, theta0)
-    
-        # Plotting results
-        fig, axs = plt.subplots(1, 2, figsize=(10, 4))
-    
-        # Vertical position plot
-        axs[0].plot(t, y, label="y(t)")
-        axs[0].set_title("Vertical Position y(t)")
-        axs[0].set_xlabel("Time (s)")
-        axs[0].set_ylabel("Height y (m)")
-        axs[0].grid(True)
-    
-        # Tilt angle plot
-        axs[1].plot(t, theta, label="θ(t)", color="orange")
-        axs[1].set_title("Tilt Angle θ(t)")
-        axs[1].set_xlabel("Time (s)")
-        axs[1].set_ylabel("Angle θ (rad)")
-        axs[1].grid(True)
-    
+def _():
+    def simulate_uncontrolled_drift():
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from scipy.integrate import solve_ivp
+
+        # --- Reduced Linear System Matrix ---
+        A_reduced = np.array([
+            [0, 1, 0, 0],     # d/dt [x]     = vx
+            [0, 0, -1, 0],    # d/dt [vx]    = -g * theta (g normalized to 1)
+            [0, 0, 0, 1],     # d/dt [theta] = omega
+            [0, 0, 0, 0]      # d/dt [omega] = 0
+        ])
+
+        # --- System Dynamics (no control input) ---
+        def dynamics(t, state):
+            return A_reduced @ state
+
+        # --- Initial State: small tilt, no velocity ---
+        initial_state = [0.0, 0.0, np.pi / 8, 0.0]  # [x, vx, theta, omega]
+
+        # --- Time Domain for Simulation ---
+        t_range = (0, 5)
+        time_points = np.linspace(*t_range, 1000)
+
+        # --- Numerical Integration ---
+        solution = solve_ivp(dynamics, t_range, initial_state, t_eval=time_points)
+
+        # --- Extract State Variables ---
+        x = solution.y[0]
+        theta = solution.y[2]
+
+        # --- Plot Results ---
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+        axes[0].plot(solution.t, x, label='x(t)', color='blue')
+        axes[0].set_title('Horizontal Position Over Time')
+        axes[0].set_xlabel('Time (s)')
+        axes[0].set_ylabel('x (position)')
+        axes[0].grid(True)
+        axes[0].legend()
+
+        axes[1].plot(solution.t, theta, label='θ(t)', color='orange')
+        axes[1].set_title('Tilt Angle Over Time')
+        axes[1].set_xlabel('Time (s)')
+        axes[1].set_ylabel('θ (radians)')
+        axes[1].grid(True)
+        axes[1].legend()
+
         plt.tight_layout()
         plt.show()
-    linear_model_in_free_fall_task()
+
+    # Run the simulation
+    simulate_uncontrolled_drift()
+
     return
 
 
@@ -1847,7 +1836,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(np, plt, sci):
     def manually_tuned_controller_adapted():
         # Initial conditions
@@ -1910,14 +1899,263 @@ def _(np, plt, sci):
     return
 
 
-app._unparsable_cell(
-    r"""
-    ## 🧩 Validation
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## 🧩 Controller Tuned with Pole Assignment""")
+    return
 
-    Test the two control strategies (pole placement and optimal control) on the \"true\" (nonlinear) model and check that they achieve their goal. Otherwise, go back to the drawing board and tweak the design parameters until they do!
-    """,
-    name="_"
-)
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+
+    To design the feedback gain matrix $K_{pp}$ for the lateral dynamics, we employed pole placement on the reduced-order closed-loop system:
+
+    $$
+    A_{cl} = A_{red} - B_{red} K_{pp}
+    $$
+
+    Through experimentation, we observed that selecting faster poles yielded a significantly better transient response. In particular, the pole configuration:
+
+    $$
+    \texttt{target\_poles} = [-2, -2.5, -3, -3.5]
+    $$
+
+    led to marked improvements. We used the `place_poles procided by scipy method to compute the gain matrix $K_{pp}$ that positions the poles accordingly.
+
+    The resulting control law is given by:
+
+    $$
+    \Delta \phi(t) = -K_{pp} \mathbf{x}_{red}(t)
+    $$
+
+
+    """
+    )
+    return
+
+
+@app.cell
+def _(np):
+    def controller_tuned_with_pole_assignment_task():
+        from scipy.signal import place_poles
+    
+        # System matrices
+        A = np.array([
+            [0, 1, 0, 0],
+            [0, 0, -1, 0],
+            [0, 0, 0, 1],
+            [0, 0, 0, 0]
+        ])
+    
+        B = np.array([[0], [-1], [0], [-3]])
+    
+        # Desired poles
+        desired_poles = [-0.5, -0.6, -0.7, -0.8]
+    
+        # Pole placement
+        placed = place_poles(A, B, desired_poles)
+        K_pp = placed.gain_matrix
+    
+        print("K_pp =", K_pp)
+
+    controller_tuned_with_pole_assignment_task()
+    return
+
+
+@app.cell
+def _(A_lat, B_lat, np):
+
+    from scipy.signal import place_poles
+
+    desired_poles = [-1.1, -1.2, -1.7, -1.8]
+
+    place_obj = place_poles(A_lat, B_lat, desired_poles)
+    K_pp = place_obj.gain_matrix
+
+    print("Pole placement gain matrix K_pp:")
+    print(K_pp)
+
+    A_cl = A_lat - B_lat @ K_pp
+    eigvals = np.linalg.eigvals(A_cl)
+    print("Closed-loop eigenvalues:", eigvals)
+
+    return A_cl, K_pp
+
+
+@app.cell
+def _(A_cl, K_pp, np, plt):
+
+    from scipy.signal import StateSpace, lsim
+
+    def evaluate_response():
+        # Time axis and input initialization
+        duration = 20
+        samples = 1000
+        timeline = np.linspace(0, duration, samples)
+        control_input = np.zeros(samples)
+
+        # Initial condition: small perturbation from equilibrium
+        state_start = np.array([1.5, 0.0, 0.1, 0.0])
+
+        # Closed-loop system: same structure, feedback applied externally
+        system = StateSpace(A_cl, np.zeros((4, 1)), np.eye(4), np.zeros((4, 1)))
+
+        # Simulate the system
+        timeline, trajectory, _ = lsim(system, U=control_input, T=timeline, X0=state_start)
+
+        # Plot only the lateral position component
+        plt.figure(figsize=(8, 4))
+        plt.plot(timeline, trajectory[:, 0], label='Lateral offset Δx')
+        plt.xlabel('Time (s)')
+        plt.ylabel(' Δx (m)')
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+        # Evaluate key state and control constraints
+        angle_deviation = trajectory[:, 2]
+        input_command = -(trajectory @ K_pp.T).flatten()
+
+        # Logical checks on bounds
+        pitch_safe = np.all(np.abs(angle_deviation) < np.pi / 2)
+        torque_safe = np.all(np.abs(input_command) < np.pi / 2)
+
+        print(f"Pitch angle constraint respected: {pitch_safe}")
+        print(f"Control signal constraint respected: {torque_safe}")
+
+        # Settling time estimation for Δx
+        margin = 0.1
+        within_bounds = np.where(np.abs(trajectory[:, 0]) <= margin)[0]
+        if within_bounds.size > 0:
+            settle_at = timeline[within_bounds[0]]
+            print(f"System stabilizes laterally at t ≈ {settle_at:.2f} seconds")
+        else:
+            print("No settling observed within the simulated time window.")
+
+    evaluate_response()
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## 🧩 Controller Tuned with Optimal Control""")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+
+    The purpose is to regulate the system around its linearized equilibrium point. The control strategy aims to stabilize the pitch angle deviation $\Delta \theta$ using a Linear Quadratic Regulator (LQR).
+
+
+    We begin the simulation with a defined initial state vector representing small perturbations from equilibrium:
+
+    * Pitch angle deviation:
+      $\Delta \theta(0) = \frac{\pi}{3} \,$
+    * Pitch angular velocity:
+      $\Delta \dot{\theta}(0) = 0$
+    * Lateral displacement and velocity:
+        * $\Delta x(0) = 0$,
+        * $\Delta \dot{x}(0) = 0$
+
+
+    The system should respond to the initial deviation with the following criteria:
+
+    * The pitch angle $\Delta \theta(t)$ must return close to 0 within \~20 seconds.
+    * While stabilizing, the response must respect the physical and operational constraints:
+
+    $$
+    |\Delta \theta(t)| < \frac{\pi}{2} \quad \text{(no tipping)}
+    $$
+
+    $$
+    |\Delta \varphi(t)| < \frac{\pi}{2} \quad \text{(bounded control input)}
+    $$
+
+
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(np, plt):
+
+    from scipy.linalg import solve_continuous_are
+
+    def simulate_lqr_response():
+        # Define dynamics matrices
+        state_matrix = np.array([
+            [0, 1, 0, 0],
+            [0, 0, -9.81, 0],
+            [0, 0, 0, 1],
+            [0, 0, 14.7, 0]
+        ])
+        input_matrix = np.array([[0], [0], [0], [1]])
+
+        # Weighting matrices for state and control
+        cost_state = np.diag([0, 0, 50, 10])
+        cost_control = np.array([[1]])
+
+        # Solve Riccati equation to get optimal state feedback gain
+        riccati_solution = solve_continuous_are(state_matrix, input_matrix, cost_state, cost_control)
+        gain = np.linalg.inv(cost_control) @ input_matrix.T @ riccati_solution
+
+        # Closed-loop system dynamics
+        system_matrix_cl = state_matrix - input_matrix @ gain
+
+        # Initial condition: angle offset
+        initial_state = np.array([0, 0, np.deg2rad(45), 0])
+        timestep = 0.01
+        duration = 25
+        times = np.arange(0, duration, timestep)
+
+        # Allocate memory for trajectory
+        trajectory = np.zeros((4, times.size))
+        trajectory[:, 0] = initial_state
+
+        # Integrate system over time
+        for t in range(1, times.size):
+            trajectory[:, t] = trajectory[:, t-1] + timestep * (system_matrix_cl @ trajectory[:, t-1])
+
+        # Compute control signal
+        control_signal = -gain @ trajectory
+
+        # Plot results
+        fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+        axes[0].plot(times, trajectory[2])
+        axes[0].axhline(np.pi/2, color='r', linestyle='--')
+        axes[0].axhline(-np.pi/2, color='r', linestyle='--')
+        axes[0].set_xlabel("Time (s)")
+        axes[0].set_ylabel("Δθ (rad)")
+        axes[0].grid(True)
+
+        axes[1].plot(times, control_signal.flatten())
+        axes[1].axhline(np.pi/2, color='r', linestyle='--')
+        axes[1].axhline(-np.pi/2, color='r', linestyle='--')
+        axes[1].set_xlabel("Time (s)")
+        axes[1].set_ylabel("Δφ (rad)")
+        axes[1].grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+    simulate_lqr_response()
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## 🧩 Cool visualization""")
+    return
 
 
 @app.cell(hide_code=True)
