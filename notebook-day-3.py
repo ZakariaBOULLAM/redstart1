@@ -1685,9 +1685,267 @@ def _(mo):
 def _(mo):
     mo.md(
         r"""
+    The point $h$ is located $\ell/3$ above the center of mass, in the direction defined by the booster’s tilt $\theta$:
+
+    * If $\theta = 0$: $h$ is directly above the center.
+    * If $\theta > 0$: $h$ moves up and to the left.
+    * If $\theta < 0$: $h$ moves up and to the right.
+    * If $\theta = \pm \pi/2$: $h$ is horizontally left/right of the center.
+
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(FuncAnimation, M, R, l, mo, np, plt):
+    def draw_exact_linearization_frame(ax, x=0.0, y=0.0, theta=0.0, dot_theta=1.0, z=1.0, v2=1.0):
+        ax.clear()
+        u = np.array([np.sin(theta), -np.cos(theta)])
+        CM = np.array([x, y])
+        base = CM - l * u
+        h = CM - (l/3) * u
+        top = CM + l * u
+
+        f_body = np.array([
+            z + M * l * dot_theta**2 / 3,
+            M * l * v2 / (3 * z)
+        ])
+        f_global = R(theta + np.pi/2) @ f_body
+        f_arrow = h + 0.2 * f_global  # scaled
+
+        ax.plot([base[0], top[0]], [base[1], top[1]], 'k-', linewidth=3)
+        ax.plot(CM[0], CM[1], 'bo', label='Center of Mass')
+        ax.plot(base[0], base[1], 'ro', label='Base')
+        ax.plot(h[0], h[1], 'go', label='h')
+
+        ax.set_aspect('equal')
+        ax.grid(True)
+        ax.set_xlim(-2*l, 2*l)
+        ax.set_ylim(-2*l, 2*l)
+        ax.set_title(f"Theta = {theta:.2f} rad")
+        ax.legend(loc='upper right')
+
+    fig, ax = plt.subplots(figsize=(6, 8))
+    thetas = np.linspace(-np.pi/2, np.pi/2, 60)
+
+    def animate(i):
+        draw_exact_linearization_frame(ax, theta=thetas[i], dot_theta=1.0, z=1.0, v2=1.0)
+
+    ani = FuncAnimation(fig, animate, frames=len(thetas), interval=100)
+    ani.save("exact_linearization_h_animation.mp4")
+    mo.video(src="exact_linearization_h_animation.mp4",autoplay=True)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
     ## 🧩 First and Second-Order Derivatives
 
     Compute $\dot{h}$ as a function of $\dot{x}$, $\dot{y}$, $\theta$ and $\dot{\theta}$ (and constants) and then $\ddot{h}$ as a function of $\theta$ and $z$ (and constants) when the auxiliary system is plugged in the booster.
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    We are given:
+
+    $$
+    h = 
+    \begin{bmatrix}
+    x - \dfrac{\ell}{3} \sin \theta \\
+    y + \dfrac{\ell}{3} \cos \theta
+    \end{bmatrix}
+    $$
+
+    Using the chain rule:
+
+    $$
+    \frac{d}{dt} \sin \theta = \cos \theta \cdot \dot{\theta}, \quad 
+    \frac{d}{dt} \cos \theta = -\sin \theta \cdot \dot{\theta}
+    $$
+
+    Therefore:
+
+    $$
+    \boxed{
+    \dot{h} = 
+    \begin{bmatrix}
+    \dot{x} - \dfrac{\ell}{3} \cos \theta \cdot \dot{\theta} \\
+    \dot{y} - \dfrac{\ell}{3} \sin \theta \cdot \dot{\theta}
+    \end{bmatrix}
+    }
+    $$
+
+
+    Differentiate $\dot{h}$ component-wise:
+
+    Top component:
+
+    $$
+    \frac{d}{dt}\left( \dot{x} - \dfrac{\ell}{3} \cos \theta \cdot \dot{\theta} \right)
+    = \ddot{x} + \dfrac{\ell}{3} \left( \sin \theta \cdot \dot{\theta}^2 - \cos \theta \cdot \ddot{\theta} \right)
+    $$
+
+    Bottom component:
+
+    $$
+    \frac{d}{dt}\left( \dot{y} - \dfrac{\ell}{3} \sin \theta \cdot \dot{\theta} \right)
+    = \ddot{y} - \dfrac{\ell}{3} \left( \cos \theta \cdot \dot{\theta}^2 + \sin \theta \cdot \ddot{\theta} \right)
+    $$
+
+    So:
+
+    $$
+    \ddot{h} = 
+    \begin{bmatrix}
+    \ddot{x} + \dfrac{\ell}{3} ( \sin \theta \cdot \dot{\theta}^2 - \cos \theta \cdot \ddot{\theta} ) \\
+    \ddot{y} - \dfrac{\ell}{3} ( \cos \theta \cdot \dot{\theta}^2 + \sin \theta \cdot \ddot{\theta} )
+    \end{bmatrix}
+    \tag{1}
+    $$
+
+
+    We do **not directly specify** $f, \phi$.
+    Instead, the force applied to the booster is:
+
+    $$
+    \begin{bmatrix}
+    f_x \\
+    f_y
+    \end{bmatrix}
+    =
+    R\left( \theta + \frac{\pi}{2} \right)
+    \begin{bmatrix}
+    z + \dfrac{M \ell}{3} \dot{\theta}^2 \\
+    \dfrac{M \ell}{3z} v_2
+    \end{bmatrix}
+    \tag{2}
+    $$
+
+    And Newton's laws give:
+
+    $$
+    \ddot{x} = \dfrac{f_x}{M}, \quad \ddot{y} = \dfrac{f_y}{M} - g
+    \tag{3}
+    $$
+
+    We now plug (3) into (1):
+
+    $$
+    \ddot{h} =
+    \begin{bmatrix}
+    \dfrac{f_x}{M} \\
+    \dfrac{f_y}{M} - g
+    \end{bmatrix}
+    +
+    \dfrac{\ell}{3}
+    \begin{bmatrix}
+    \sin \theta \cdot \dot{\theta}^2 - \cos \theta \cdot \ddot{\theta} \\
+    - \cos \theta \cdot \dot{\theta}^2 - \sin \theta \cdot \ddot{\theta}
+    \end{bmatrix}
+    \tag{4}
+    $$
+
+
+
+    From (2):
+
+    $$
+    \frac{1}{M}
+    \begin{bmatrix}
+    f_x \\
+    f_y
+    \end{bmatrix}
+    =
+    R\left( \theta + \frac{\pi}{2} \right)
+    \begin{bmatrix}
+    \dfrac{z}{M} + \dfrac{\ell}{3} \dot{\theta}^2 \\
+    \dfrac{\ell}{3z} v_2
+    \end{bmatrix}
+    $$
+
+    Now, note that the correction terms in (4):
+
+    $$
+    \dfrac{\ell}{3}
+    \begin{bmatrix}
+    \sin \theta \cdot \dot{\theta}^2 \\
+    - \cos \theta \cdot \dot{\theta}^2
+    \end{bmatrix}
+    =
+    R\left( \theta + \frac{\pi}{2} \right)
+    \begin{bmatrix}
+    \dfrac{\ell}{3} \dot{\theta}^2 \\
+    0
+    \end{bmatrix}
+    $$
+
+    This means:
+
+    $$
+    \frac{1}{M}
+    \begin{bmatrix}
+    f_x \\
+    f_y
+    \end{bmatrix}
+    +
+    \dfrac{\ell}{3}
+    \begin{bmatrix}
+    \sin \theta \cdot \dot{\theta}^2 \\
+    - \cos \theta \cdot \dot{\theta}^2
+    \end{bmatrix}
+    =
+    R\left( \theta + \frac{\pi}{2} \right)
+    \begin{bmatrix}
+    \dfrac{z}{M} + \dfrac{\ell}{3} \dot{\theta}^2 \\
+    \dfrac{\ell}{3z} v_2
+    \end{bmatrix}
+    $$
+
+    So the second term in (4) is already included in the rotated force expression.
+
+    Therefore, the total expression is:
+
+    $$
+    \ddot{h} =
+    R\left( \theta + \frac{\pi}{2} \right)
+    \begin{bmatrix}
+    \dfrac{z}{M} + \dfrac{\ell}{3} \dot{\theta}^2 \\
+    \dfrac{\ell}{3z} v_2
+    \end{bmatrix}
+    -
+    \begin{bmatrix}
+    0 \\
+    g
+    \end{bmatrix}
+    $$
+
+
+
+    $$
+    \boxed{
+    \ddot{h} =
+    \frac{1}{M}
+    R\left( \theta + \frac{\pi}{2} \right)
+    \begin{bmatrix}
+    z + \dfrac{M \ell}{3} \dot{\theta}^2 \\
+    \dfrac{M \ell}{3z} v_2
+    \end{bmatrix}
+    -
+    \begin{bmatrix}
+    0 \\
+    g
+    \end{bmatrix}
+    }
+    $$
+
     """
     )
     return
