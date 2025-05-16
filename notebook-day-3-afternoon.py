@@ -2036,6 +2036,198 @@ def _(mo):
 def _(mo):
     mo.md(
         r"""
+    Given the output and its derivatives:
+    - \( h(t), \dot{h}(t), \ddot{h}(t), h^{(3)}(t) \)
+
+    We aim to *reconstruct the full internal state* of the booster system:
+
+    \[
+    x, \dot{x}, y, \dot{y}, \theta, \dot{\theta}, z, \dot{z}
+    \]
+
+    under the assumption that \( z(t) < 0 \) for all \( t \). We then implement the corresponding function T_inv.
+
+    ---
+
+    ##  Theoretical derivation
+
+    ### 1. Recovering \( \theta \) and \( z \)
+
+    The second derivative of the output \( h(t) \) is:
+
+    \[
+    \ddot{h} = \frac{1}{M} R\left(\theta - \frac{\pi}{2}\right) 
+    \begin{bmatrix} z \\ 0 \end{bmatrix}
+    -
+    \begin{bmatrix} 0 \\ g \end{bmatrix}
+    \]
+
+    Expanding this using trigonometric identities:
+
+    \[
+    \begin{cases}
+    \ddot{h}_x = \frac{z}{M} \sin(\theta) \\
+    \ddot{h}_y = -\frac{z}{M} \cos(\theta) - g
+    \end{cases}
+    \]
+
+    Let:
+
+    \[
+    a = \ddot{h}_x, \quad b = \ddot{h}_y + g
+    \]
+
+    Then:
+
+    \[
+    \theta = \arctan2(-a, b)
+    \]
+
+    Once \( \theta \) is known, we solve for \( z \):
+
+    \[
+    z = M \cdot \frac{a}{\sin(\theta)} = -M \cdot \frac{b}{\cos(\theta)}
+    \]
+
+    If both are numerically stable, we use the average for robustness.
+
+    ---
+
+    ### 2. Recovering \( \dot{\theta} \) and \( \dot{z} \)
+
+    From the third derivative:
+
+    \[
+    h^{(3)} = \frac{1}{M} \left[
+    \begin{bmatrix} \cos(\theta) \\ \sin(\theta) \end{bmatrix} \dot{\theta} z 
+    +
+    \begin{bmatrix} \sin(\theta) \\ -\cos(\theta) \end{bmatrix} \dot{z}
+    \right]
+    \]
+
+    We write this as a linear system:
+
+    \[
+    M h^{(3)} = A 
+    \begin{bmatrix} \dot{\theta} \\ \dot{z} \end{bmatrix}, \quad 
+    A = 
+    \begin{bmatrix}
+    \cos(\theta) z & \sin(\theta) \\
+    \sin(\theta) z & -\cos(\theta)
+    \end{bmatrix}
+    \]
+
+    This system is solvable since \( z < 0 \), and yields unique values for \( \dot{\theta}, \dot{z} \).
+
+    ---
+
+    ### 3. Recovering \( x, y \) and \( \dot{x}, \dot{y} \)
+
+    Using the geometric relation:
+
+    \[
+    h = 
+    \begin{bmatrix}
+    x - \frac{\ell}{3} \sin(\theta) \\
+    y + \frac{\ell}{3} \cos(\theta)
+    \end{bmatrix}
+    \Rightarrow
+    x = h_x + \frac{\ell}{3} \sin(\theta), \quad
+    y = h_y - \frac{\ell}{3} \cos(\theta)
+    \]
+
+    \[
+    \dot{x} = \dot{h}_x + \frac{\ell}{3} \cos(\theta) \dot{\theta}, \quad
+    \dot{y} = \dot{h}_y + \frac{\ell}{3} \sin(\theta) \dot{\theta}
+    \]
+
+    ---
+
+    ##  Conclusion
+
+    Given \( h \), \( \dot{h} \), \( \ddot{h} \), \( h^{(3)} \), we can uniquely recover all state variables under the assumption \( z < 0 \). This inversion process is well-posed and stable under mild regularity conditions.
+    """
+    )
+    return
+
+
+@app.cell
+def _(np):
+    def T_inv(hx, hy, dhx, dhy, ddhx, ddhy, d3hx, d3hy, M, l, g):
+        """
+        Given the output h and its first three derivatives, 
+        compute the internal state: x, dx, y, dy, theta, dtheta, z, dz.
+        Assumes z < 0.
+
+        Parameters
+        ----------
+        hx, hy : float
+            Position of the output point h(t)
+        dhx, dhy : float
+            Velocity of the output point ḣ(t)
+        ddhx, ddhy : float
+            Acceleration of the output point ḧ(t)
+        d3hx, d3hy : float
+            Jerk (third derivative) of the output h⁽³⁾(t)
+        M : float
+            Booster mass
+        l : float
+            Half-length of the booster (ℓ)
+        g : float
+            Gravity constant
+
+        Returns
+        -------
+        x, dx, y, dy, theta, dtheta, z, dz : floats
+            Full internal state of the system
+        """
+
+        # Recover theta using ḧ = (1/M) R(θ - π/2) * [z, 0] - [0, g]
+        a = ddhx
+        b = ddhy + g
+        theta = np.arctan2(-a, b)
+
+        # Recover z from ḧ (average of two expressions for robustness)
+        sin_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
+
+        z1 = M * a / sin_theta if abs(sin_theta) > 1e-8 else None
+        z2 = -M * b / cos_theta if abs(cos_theta) > 1e-8 else None
+
+        if z1 is not None and z2 is not None:
+            z = 0.5 * (z1 + z2)
+        elif z1 is not None:
+            z = z1
+        elif z2 is not None:
+            z = z2
+        else:
+            raise ValueError("Cannot determine z: sin(theta) and cos(theta) too small.")
+
+        # Recover dtheta and dz from h⁽³⁾ = (1/M) * [cosθ * dtheta * z + sinθ * dz ; sinθ * dtheta * z - cosθ * dz]
+        A = np.array([
+            [cos_theta * z, sin_theta],
+            [sin_theta * z, -cos_theta]
+        ])
+        b_vec = M * np.array([d3hx, d3hy])
+        dtheta, dz = np.linalg.solve(A, b_vec)
+
+        # Recover x, y from h
+        x = hx + (l / 3) * sin_theta
+        y = hy - (l / 3) * cos_theta
+
+        # Recover dx, dy from ḣ
+        dx = dhx + (l / 3) * cos_theta * dtheta
+        dy = dhy + (l / 3) * sin_theta * dtheta
+
+        return x, dx, y, dy, theta, dtheta, z, dz
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
     ## 🧩 Admissible Path Computation
 
     Implement a function
@@ -2070,6 +2262,85 @@ def _(mo):
     return
 
 
+@app.cell
+def _(M, g, np):
+    def compute(
+        x_0, dx_0, y_0, dy_0, theta_0, dtheta_0, z_0, dz_0,
+        x_tf, dx_tf, y_tf, dy_tf, theta_tf, dtheta_tf, z_tf, dz_tf,
+        tf
+    ):
+        # Solve for quintic polynomial coefficients
+        def poly5(t0, tf, s0, ds0, d2s0, sf, dsf, d2sf):
+            A = np.array([
+                [1, t0, t0**2,     t0**3,       t0**4,       t0**5],
+                [0, 1,  2*t0,      3*t0**2,     4*t0**3,     5*t0**4],
+                [0, 0,  2,         6*t0,        12*t0**2,    20*t0**3],
+                [1, tf, tf**2,     tf**3,       tf**4,       tf**5],
+                [0, 1,  2*tf,      3*tf**2,     4*tf**3,     5*tf**4],
+                [0, 0,  2,         6*tf,        12*tf**2,    20*tf**3],
+            ])
+            b = np.array([s0, ds0, d2s0, sf, dsf, d2sf])
+            return np.linalg.solve(A, b)
+
+        # Evaluate polynomial and its derivatives at time t
+        def polyval(c, t):
+            powers = np.array([1, t, t**2, t**3, t**4, t**5])
+            d1 = np.array([0, 1, 2*t, 3*t**2, 4*t**3, 5*t**4])
+            d2 = np.array([0, 0, 2, 6*t, 12*t**2, 20*t**3])
+            d3 = np.array([0, 0, 0, 6, 24*t, 60*t**2])
+            return c @ powers, c @ d1, c @ d2, c @ d3
+
+        # Precompute all polynomial coefficients
+        cx = poly5(0, tf, x_0, dx_0, 0, x_tf, dx_tf, 0)
+        cy = poly5(0, tf, y_0, dy_0, 0, y_tf, dy_tf, 0)
+        ct = poly5(0, tf, theta_0, dtheta_0, 0, theta_tf, dtheta_tf, 0)
+        cz = poly5(0, tf, z_0, dz_0, 0, z_tf, dz_tf, 0)
+
+        def fun(t):
+            # Evaluate trajectories
+            x, dx, d2x, d3x = polyval(cx, t)
+            y, dy, d2y, d3y = polyval(cy, t)
+            theta, dtheta, _, _ = polyval(ct, t)
+            z, dz, _, _ = polyval(cz, t)
+
+            # Compute reactor force f from ddh = 1/M * R(theta - pi/2) * [z, ...] - [0, g]
+            sin_th = np.sin(theta)
+            cos_th = np.cos(theta)
+
+            ddhx = d2x
+            ddhy = d2y
+            d3hx = d3x
+            d3hy = d3y
+
+            # Recover f using ddh
+            a = ddhx
+            b = ddhy + g
+
+            f1 = M * a / sin_th if abs(sin_th) > 1e-8 else None
+            f2 = -M * b / cos_th if abs(cos_th) > 1e-8 else None
+
+            if f1 is not None and f2 is not None:
+                f = 0.5 * (f1 + f2)
+            elif f1 is not None:
+                f = f1
+            elif f2 is not None:
+                f = f2
+            else:
+                raise ValueError("Cannot determine f: sin(theta) and cos(theta) too small.")
+
+            # Compute phi using inverse rotation (geometric form)
+            fx = -f * np.sin(theta)
+            fy = +f * np.cos(theta)
+            phi = np.arctan2(fx * np.cos(theta) + fy * np.sin(theta),
+                             fx * -np.sin(theta) + fy * np.cos(theta))
+
+            return np.array([x, dx, y, dy, theta, dtheta, z, dz, f, phi])
+
+        return fun
+
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -2088,76 +2359,172 @@ def _(mo):
     return
 
 
-@app.cell
-def _(M, g, l, np, plt, redstart_solve):
-    def perfect_landing_simulation():
-        tf = 20
-        t_span = [0.0, tf]
-    
-        # Initial state
-        x0, dx0 = 0.0, 0.0
-        y0, dy0 = 10.0, 0.0
+@app.cell(hide_code=True)
+def _(M, g, l, np, plt):
+    # Quintic polynomial generator
+    def poly5(t0, tf, s0, ds0, d2s0, sf, dsf, d2sf):
+        A = np.array([
+            [1, t0, t0**2,     t0**3,       t0**4,       t0**5],
+            [0, 1,  2*t0,      3*t0**2,     4*t0**3,     5*t0**4],
+            [0, 0,  2,         6*t0,        12*t0**2,    20*t0**3],
+            [1, tf, tf**2,     tf**3,       tf**4,       tf**5],
+            [0, 1,  2*tf,      3*tf**2,     4*tf**3,     5*tf**4],
+            [0, 0,  2,         6*tf,        12*tf**2,    20*tf**3],
+        ])
+        b = np.array([s0, ds0, d2s0, sf, dsf, d2sf])
+        return np.linalg.solve(A, b)
+
+    # Polynomial evaluation
+    def polyval(c, t):
+        powers = np.array([1, t, t**2, t**3, t**4, t**5])
+        d1 = np.array([0, 1, 2*t, 3*t**2, 4*t**3, 5*t**4])
+        d2 = np.array([0, 0, 2, 6*t, 12*t**2, 20*t**3])
+        d3 = np.array([0, 0, 0, 6, 24*t, 60*t**2])
+        return c @ powers, c @ d1, c @ d2, c @ d3
+
+    # Trajectory generation and sampling
+    def compute_trajectory(plot_result=True):
+        tf = 10.0
+        x0, dx0 = 5.0, 0.0
+        y0, dy0 = 20.0, 0.0
         theta0, dtheta0 = np.pi/8, 0.0
+        z0, dz0 = -M*g, 0.0
 
-        # Final desired state
         xf, dxf = 0.0, 0.0
-        yf, dyf = l, 0.0
+        yf, dyf = 4/3*l, 0.0
         thetaf, dthetaf = 0.0, 0.0
+        zf, dzf = -M*g, 0.0
 
-        # Build quintic interpolating polynomials for x(t), y(t), theta(t)
-        def quintic_coeffs(p0, v0, a0, pf, vf, af, T):
-            # Solve for coefficients of 5th degree polynomial
-            A = np.array([
-                [0, 0, 0, 0, 0, 1],
-                [T**5, T**4, T**3, T**2, T, 1],
-                [0, 0, 0, 0, 1, 0],
-                [5*T**4, 4*T**3, 3*T**2, 2*T, 1, 0],
-                [0, 0, 0, 2, 0, 0],
-                [20*T**3, 12*T**2, 6*T, 2, 0, 0]
-            ])
-            b = np.array([p0, pf, v0, vf, a0, af])
-            return np.linalg.solve(A, b)
+        cx = poly5(0, tf, x0, dx0, 0, xf, dxf, 0)
+        cy = poly5(0, tf, y0, dy0, 0, yf, dyf, 0)
+        ct = poly5(0, tf, theta0, dtheta0, 0, thetaf, dthetaf, 0)
+        cz = poly5(0, tf, z0, dz0, 0, zf, dzf, 0)
 
-        coeffs_x = quintic_coeffs(x0, dx0, 0, xf, dxf, 0, tf)
-        coeffs_y = quintic_coeffs(y0, dy0, 0, yf, dyf, 0, tf)
-        coeffs_theta = quintic_coeffs(theta0, dtheta0, 0, thetaf, dthetaf, 0, tf)
+        t_vals = np.linspace(0, tf, 300)
+        states = []
 
-        def poly(t, coeffs):
-            T = np.array([t**5, t**4, t**3, t**2, t, 1])
-            dT = np.array([5*t**4, 4*t**3, 3*t**2, 2*t, 1, 0])
-            ddT = np.array([20*t**3, 12*t**2, 6*t, 2, 0, 0])
-            return T @ coeffs, dT @ coeffs, ddT @ coeffs
+        for t in t_vals:
+            x, dx, d2x, d3x = polyval(cx, t)
+            y, dy, d2y, d3y = polyval(cy, t)
+            theta, dtheta, _, _ = polyval(ct, t)
+            z, dz, _, _ = polyval(cz, t)
 
-        def f_phi(t, state):
-            x, dx, y, dy, theta, dtheta = state
-            _, _, ddx = poly(t, coeffs_x)
-            _, _, ddy = poly(t, coeffs_y)
-            _, _, ddtheta = poly(t, coeffs_theta)
+            sin_th = np.sin(theta)
+            cos_th = np.cos(theta)
 
-            f = M * (ddy + g) / np.cos(theta)
-            phi = np.arcsin((-M * ddx) / (f)) - theta
-            return np.array([f, phi])
+            ddhx = d2x
+            ddhy = d2y
+            a = ddhx
+            b = ddhy + g
 
-        y0_vec = [x0, dx0, y0, dy0, theta0, dtheta0]
-        sol = redstart_solve(t_span, y0_vec, f_phi)
+            f1 = M * a / sin_th if abs(sin_th) > 1e-8 else None
+            f2 = -M * b / cos_th if abs(cos_th) > 1e-8 else None
 
-        t = np.linspace(t_span[0], t_span[1], 1000)
-        sol_t = sol(t)
+            if f1 is not None and f2 is not None:
+                f = 0.5 * (f1 + f2)
+            elif f1 is not None:
+                f = f1
+            elif f2 is not None:
+                f = f2
+            else:
+                f = 0.0
 
-        fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-        axs[0].plot(t, sol_t[0], label="x(t)")
-        axs[0].plot(t, sol_t[2], label="y(t)")
-        axs[0].legend(); axs[0].grid(); axs[0].set_ylabel("Position (m)")
-        axs[1].plot(t, sol_t[4], label="theta(t)")
-        axs[1].legend(); axs[1].grid(); axs[1].set_ylabel("Angle (rad)")
-        axs[2].plot(t, [f_phi(tt, sol(tt))[1] for tt in t], label="phi(t)")
-        axs[2].legend(); axs[2].grid(); axs[2].set_ylabel("Gimbal Angle φ")
-        axs[2].set_xlabel("Time (s)")
-        plt.suptitle("Perfect Landing Trajectory")
-        return plt.gcf()
+            fx = -f * np.sin(theta)
+            fy = +f * np.cos(theta)
+            phi = np.arctan2(fx * np.cos(theta) + fy * np.sin(theta),
+                             fx * -np.sin(theta) + fy * np.cos(theta))
 
-    perfect_landing_simulation()
+            states.append([x, dx, y, dy, theta, dtheta, z, dz, f, phi])
 
+
+
+        states = np.array(states)
+
+        if plot_result:
+            # Plot avec cibles
+            fig, axs = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+        
+            axs[0].plot(t_vals, states[:, 0], label="x(t)")
+            axs[0].axhline(xf, color='r', linestyle='--', label="target x")
+            axs[0].set_ylabel("Position [m]")
+            axs[0].legend()
+            axs[0].grid(True)
+    
+            axs[1].plot(t_vals, states[:, 2], label="y(t)")
+            axs[1].axhline(yf, color='r', linestyle='--', label="target y")
+            axs[1].set_ylabel("Position [m]")
+            axs[1].legend()
+            axs[1].grid(True)
+        
+            axs[2].plot(t_vals, states[:, 4], label=r"$\theta(t)$")
+            axs[2].axhline(thetaf, color='g', linestyle='--', label="target theta")
+            axs[2].set_ylabel("Angle [rad]")
+            axs[2].legend()
+            axs[2].grid(True)
+        
+        
+            plt.tight_layout()
+            plt.show()
+
+        return t_vals, states
+
+    # Compute and plot
+    t_vals, states = compute_trajectory()
+    return (compute_trajectory,)
+
+
+@app.cell
+def _(
+    FFMpegWriter,
+    FuncAnimation,
+    compute_trajectory,
+    draw_booster,
+    np,
+    plt,
+    tqdm,
+):
+    def final_video_sim():
+        t_vals, states = compute_trajectory(plot_result=False)
+        t_span = [t_vals[0], t_vals[-1]]
+        fps = 30
+        ts = np.linspace(t_span[0], t_span[1], int(np.round((t_span[1] - t_span[0]) * fps)) + 1)
+        output = "final_sim.mp4"
+
+        fig = plt.figure(figsize=(10, 6))
+        axes = plt.gca()
+
+        def animate(i):
+            t = ts[i]
+            idx = np.searchsorted(t_vals, t)
+            if idx >= len(states): idx = -1
+            x, dx, y, dy, theta, dtheta, z, dz, f, phi = states[idx]
+        
+            axes.clear()
+            draw_booster(x, y, theta, f, phi, axes=axes)
+            axes.set_xticks([0.0])
+            axes.set_xlim(-20, +20)
+            axes.set_ylim(-1, 20)
+            axes.set_aspect("equal")
+            axes.set_xlabel(f"$t={t:.1f}$")
+            axes.set_axisbelow(True)
+            axes.grid(True)
+            pbar.update(1)
+
+        pbar = tqdm(total=len(ts), desc="Generating video")
+        anim = FuncAnimation(fig, animate, frames=len(ts), interval=1000/fps)
+        writer = FFMpegWriter(fps=fps)
+        anim.save(output, writer=writer)
+        plt.close()
+        print(f"Animation saved as {output!r}")
+        return output
+
+    return (final_video_sim,)
+
+
+@app.cell
+def _(final_video_sim, mo):
+    final_video_sim()
+    mo.show_code(mo.video(src="final_sim.mp4"))
     return
 
 
