@@ -1994,6 +1994,29 @@ def _(mo):
     return
 
 
+@app.cell
+def _(np):
+    def T(x, dx, y, dy, theta, dtheta, z, dz, l, M, g):
+        sin_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
+        l_over_3 = l / 3
+        inv_M = 1 / M
+    
+        h_x = x - l_over_3 * sin_theta
+        h_y = y + l_over_3 * cos_theta
+        dh_x = dx - l_over_3 * cos_theta * dtheta
+        dh_y = dy - l_over_3 * sin_theta * dtheta
+
+        d2h_x = inv_M * sin_theta * z
+        d2h_y = inv_M * (-cos_theta * z - M * g)
+        d3h_x = inv_M * (cos_theta * dtheta * z + sin_theta * dz)
+        d3h_y = inv_M * (sin_theta * dtheta * z - cos_theta * dz)
+
+        return h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y
+
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -2062,6 +2085,79 @@ def _(mo):
     Make the graph of the relevant variables as a function of time, then make a video out of the same result. Comment and iterate if necessary!
     """
     )
+    return
+
+
+@app.cell
+def _(M, g, l, np, plt, redstart_solve):
+    def perfect_landing_simulation():
+        tf = 20
+        t_span = [0.0, tf]
+    
+        # Initial state
+        x0, dx0 = 0.0, 0.0
+        y0, dy0 = 10.0, 0.0
+        theta0, dtheta0 = np.pi/8, 0.0
+
+        # Final desired state
+        xf, dxf = 0.0, 0.0
+        yf, dyf = l, 0.0
+        thetaf, dthetaf = 0.0, 0.0
+
+        # Build quintic interpolating polynomials for x(t), y(t), theta(t)
+        def quintic_coeffs(p0, v0, a0, pf, vf, af, T):
+            # Solve for coefficients of 5th degree polynomial
+            A = np.array([
+                [0, 0, 0, 0, 0, 1],
+                [T**5, T**4, T**3, T**2, T, 1],
+                [0, 0, 0, 0, 1, 0],
+                [5*T**4, 4*T**3, 3*T**2, 2*T, 1, 0],
+                [0, 0, 0, 2, 0, 0],
+                [20*T**3, 12*T**2, 6*T, 2, 0, 0]
+            ])
+            b = np.array([p0, pf, v0, vf, a0, af])
+            return np.linalg.solve(A, b)
+
+        coeffs_x = quintic_coeffs(x0, dx0, 0, xf, dxf, 0, tf)
+        coeffs_y = quintic_coeffs(y0, dy0, 0, yf, dyf, 0, tf)
+        coeffs_theta = quintic_coeffs(theta0, dtheta0, 0, thetaf, dthetaf, 0, tf)
+
+        def poly(t, coeffs):
+            T = np.array([t**5, t**4, t**3, t**2, t, 1])
+            dT = np.array([5*t**4, 4*t**3, 3*t**2, 2*t, 1, 0])
+            ddT = np.array([20*t**3, 12*t**2, 6*t, 2, 0, 0])
+            return T @ coeffs, dT @ coeffs, ddT @ coeffs
+
+        def f_phi(t, state):
+            x, dx, y, dy, theta, dtheta = state
+            _, _, ddx = poly(t, coeffs_x)
+            _, _, ddy = poly(t, coeffs_y)
+            _, _, ddtheta = poly(t, coeffs_theta)
+
+            f = M * (ddy + g) / np.cos(theta)
+            phi = np.arcsin((-M * ddx) / (f)) - theta
+            return np.array([f, phi])
+
+        y0_vec = [x0, dx0, y0, dy0, theta0, dtheta0]
+        sol = redstart_solve(t_span, y0_vec, f_phi)
+
+        t = np.linspace(t_span[0], t_span[1], 1000)
+        sol_t = sol(t)
+
+        fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+        axs[0].plot(t, sol_t[0], label="x(t)")
+        axs[0].plot(t, sol_t[2], label="y(t)")
+        axs[0].legend(); axs[0].grid(); axs[0].set_ylabel("Position (m)")
+        axs[1].plot(t, sol_t[4], label="theta(t)")
+        axs[1].legend(); axs[1].grid(); axs[1].set_ylabel("Angle (rad)")
+        axs[2].plot(t, [f_phi(tt, sol(tt))[1] for tt in t], label="phi(t)")
+        axs[2].legend(); axs[2].grid(); axs[2].set_ylabel("Gimbal Angle φ")
+        axs[2].set_xlabel("Time (s)")
+        plt.suptitle("Perfect Landing Trajectory")
+        return plt.gcf()
+
+    perfect_landing_simulation()
+
     return
 
 
