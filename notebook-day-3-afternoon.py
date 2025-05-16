@@ -2220,7 +2220,6 @@ def _(np):
         dy = dhy + (l / 3) * sin_theta * dtheta
 
         return x, dx, y, dy, theta, dtheta, z, dz
-
     return
 
 
@@ -2359,7 +2358,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(M, g, l, np, plt):
     # Quintic polynomial generator
     def poly5(t0, tf, s0, ds0, d2s0, sf, dsf, d2sf):
@@ -2391,7 +2390,7 @@ def _(M, g, l, np, plt):
         z0, dz0 = -M*g, 0.0
 
         xf, dxf = 0.0, 0.0
-        yf, dyf = 4/3*l, 0.0
+        yf, dyf = l, 0.0
         thetaf, dthetaf = 0.0, 0.0
         zf, dzf = -M*g, 0.0
 
@@ -2498,7 +2497,7 @@ def _(
             idx = np.searchsorted(t_vals, t)
             if idx >= len(states): idx = -1
             x, dx, y, dy, theta, dtheta, z, dz, f, phi = states[idx]
-        
+
             axes.clear()
             draw_booster(x, y, theta, f, phi, axes=axes)
             axes.set_xticks([0.0])
